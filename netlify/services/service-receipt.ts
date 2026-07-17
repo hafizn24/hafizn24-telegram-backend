@@ -61,7 +61,7 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
     `Currency: ${payload.currency || 'MYR'}`,
     `Notes: ${payload.notes || 'No additional notes'}`,
     `Image URL: ${imageUrl || 'Not uploaded'}`
-  ].join('\n');
+  ].join('\\n');
 
   const response = await fetch(process.env.ZAI_API_URL || '', {
     method: 'POST',

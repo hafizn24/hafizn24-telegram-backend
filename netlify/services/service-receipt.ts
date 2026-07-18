@@ -103,37 +103,145 @@ export const uploadReceiptImage = async (buffer: Buffer, fileName: string) => {
   };
 };
 
-const extractMessageText = (message: { content?: string; reasoning_content?: string }): string => {
-  return message.content || message.reasoning_content || '';
+const extractMessageText = (messageContent: unknown): string => {
+  if (typeof messageContent === 'string') {
+    return messageContent;
+  }
+  if (Array.isArray(messageContent)) {
+    return messageContent
+      .map((item) => extractMessageText(item))
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (messageContent && typeof messageContent === 'object') {
+    const asRecord = messageContent as Record<string, unknown>;
+    if (typeof asRecord.text === 'string') {
+      return asRecord.text;
+    }
+    return Object.values(asRecord)
+      .map((value) => extractMessageText(value))
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
 };
 
-const fallbackReceiptData = (error: string) => ({
-  success: false,
-  error,
-  data: null
+const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
+  const trimmedContent = content.trim();
+  const cleanedContent = trimmedContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1] || trimmedContent;
+
+  try {
+    const parsed = JSON.parse(cleanedContent) as Record<string, unknown>;
+
+    return {
+      merchantName: typeof parsed.merchantName === 'string'
+        ? parsed.merchantName
+        : typeof parsed.merchant === 'string'
+          ? parsed.merchant
+          : typeof parsed.vendor === 'string'
+            ? parsed.vendor
+            : 'Unknown',
+      totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
+        ? parsed.totalAmount
+        : typeof parsed.total === 'number' || typeof parsed.total === 'string'
+          ? parsed.total
+          : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
+            ? parsed.amount
+            : 0,
+      currency: typeof parsed.currency === 'string'
+        ? parsed.currency
+        : typeof parsed.currencyCode === 'string'
+          ? parsed.currencyCode
+          : 'MYR',
+      notes: typeof parsed.notes === 'string'
+        ? parsed.notes
+        : typeof parsed.note === 'string'
+          ? parsed.note
+          : '',
+      summary: typeof parsed.summary === 'string'
+        ? parsed.summary
+        : typeof parsed.aiSummary === 'string'
+          ? parsed.aiSummary
+          : typeof parsed.description === 'string'
+            ? parsed.description
+            : 'AI summary unavailable.'
+    };
+  } catch (error) {
+    const fallbackJson = cleanedContent.match(/\{[\s\S]*\}/);
+    if (fallbackJson) {
+      try {
+        const parsed = JSON.parse(fallbackJson[0]) as Record<string, unknown>;
+        return {
+          merchantName: typeof parsed.merchantName === 'string'
+            ? parsed.merchantName
+            : typeof parsed.merchant === 'string'
+              ? parsed.merchant
+              : typeof parsed.vendor === 'string'
+                ? parsed.vendor
+                : 'Unknown',
+          totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
+            ? parsed.totalAmount
+            : typeof parsed.total === 'number' || typeof parsed.total === 'string'
+              ? parsed.total
+              : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
+                ? parsed.amount
+                : 0,
+          currency: typeof parsed.currency === 'string'
+            ? parsed.currency
+            : typeof parsed.currencyCode === 'string'
+              ? parsed.currencyCode
+              : 'MYR',
+          notes: typeof parsed.notes === 'string'
+            ? parsed.notes
+            : typeof parsed.note === 'string'
+              ? parsed.note
+              : '',
+          summary: typeof parsed.summary === 'string'
+            ? parsed.summary
+            : typeof parsed.aiSummary === 'string'
+              ? parsed.aiSummary
+              : typeof parsed.description === 'string'
+                ? parsed.description
+                : trimmedContent || 'AI summary unavailable.'
+        };
+      } catch (fallbackError) {
+        console.error('parseExtractedReceiptData: fallback JSON parse error', fallbackError, cleanedContent);
+      }
+    }
+
+    return {
+      merchantName: 'Unknown',
+      totalAmount: 0,
+      currency: 'MYR',
+      notes: '',
+      summary: trimmedContent || 'AI summary unavailable.'
+    };
+  }
+};
+
+const fallbackReceiptData = (summary: string): ExtractedReceiptData => ({
+  merchantName: 'Unknown',
+  totalAmount: 0,
+  currency: 'MYR',
+  notes: '',
+  summary
 });
 
-const parseExtractedReceiptData = (content: string) => {
-  if (!content || content.includes('AI summary unavailable')) {
-    return fallbackReceiptData('AI summary unavailable: empty AI response');
+export const extractReceiptData = async (imageUrl?: string | null) => {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiUrl = process.env.OPENROUTER_API_URL;
+  const model = process.env.OPENROUTER_MODEL;
+
+  if (!apiKey) {
+    return fallbackReceiptData('AI summary unavailable: AI API key is not configured.');
   }
 
-  return {
-    success: true,
-    error: null,
-    data: {
-      ai_summary: content.trim()
-    }
-  };
-};
+  if (!apiUrl) {
+    return fallbackReceiptData('AI summary unavailable: AI API URL is not configured.');
+  }
 
-export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?: string | null) => {
-  const apiKey = process.env.ZAI_API_KEY;
-  const apiUrl = process.env.ZAI_API_URL;
-  const model = process.env.ZAI_MODEL;
-
-  if (!apiKey || !apiUrl || !model) {
-    return 'AI summary unavailable: required environment variables are not configured.';
+  if (!model) {
+    return fallbackReceiptData('AI summary unavailable: AI model is not configured.');
   }
 
   if (!imageUrl) {
@@ -141,40 +249,49 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
   }
 
   const prompt = [
-    'You are a finance assistant. Summarize the receipt in a short, useful way.',
-    `Merchant: ${payload.merchantName || 'Unknown'}`,
-    `Total: ${payload.totalAmount || 'Unknown'}`,
-    `Currency: ${payload.currency || 'MYR'}`,
-    `Notes: ${payload.notes || 'No additional notes'}`,
-    `Image URL: ${imageUrl || 'Not uploaded'}`
-  ].join('\\n');
+    'You are a finance assistant analyzing a receipt image.',
+    'Extract the receipt information from the image and return valid JSON only.',
+    'Required keys: merchantName, totalAmount, currency, notes, summary.',
+    'Use null for text values that are not visible and 0 for monetary values that are not visible.',
+    'Do not wrap the response in markdown fences or extra commentary.',
+    'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+  ].join('\n');
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      max_tokens: 1024,
-      thinking: { type: 'disabled' },
-      messages: [
-        {
-          role: 'system',
-          content: 'You summarize receipts clearly and concisely.'
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imageUrl } }
-          ]
-        }
-      ]
-    })
-  });
+  // IMPORTANT: the image must be sent as a multimodal content block (type: "image_url").
+  // Using a remote image URL matches OpenRouter's expected format and avoids unnecessary
+  // base64 payload encoding.
+  let response: Response;
+  try {
+    response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You extract receipt metadata from images and return structured JSON.'
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 1024,
+        thinking: { type: 'disabled' }
+      })
+    });
+  } catch (err) {
+    console.error('extractReceiptData: network error calling AI service', err);
+    return fallbackReceiptData('AI summary unavailable: could not reach the AI service.');
+  }
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
@@ -183,22 +300,29 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
   }
 
   const data = await response.json() as {
-    choices?: Array<{ message?: { content?: string; reasoning_content?: string } } & { finish_reason?: string }>;
+    choices?: Array<{
+      message?: { content?: unknown; reasoning_content?: unknown };
+      finish_reason?: string;
+    }>;
   };
 
-  let content = extractMessageText(data.choices?.[0]?.message || {});
+  const messageContent = data.choices?.[0]?.message?.content;
+  let content = extractMessageText(messageContent).trim();
 
-  if (!content.trim()) {
-    content = extractMessageText(data.choices?.[0]?.message || {});
+  // Fallback: some GLM responses still put text in reasoning_content even with
+  // thinking disabled, or truncate content if max_tokens is hit mid-thought.
+  if (!content) {
+    const reasoningContent = data.choices?.[0]?.message?.reasoning_content;
+    content = extractMessageText(reasoningContent).trim();
   }
 
   if (!content) {
-  console.error('AI response failed:', {
-    finish_reason: (data as any).finish_reason || (data.choices?.[0] as any)?.finish_reason,
-    raw_data: data
-  });
-    return 'AI summary unavailable: empty AI response.';
+    console.error(
+      'extractReceiptData: empty AI response',
+      JSON.stringify({ finishReason: data.choices?.[0]?.finish_reason, data })
+    );
+    return fallbackReceiptData('AI summary unavailable: empty AI response.');
   }
 
-  return parseExtractedReceiptData(content).data?.ai_summary || 'AI summary unavailable.';
+  return parseExtractedReceiptData(content);
 };

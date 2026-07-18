@@ -5,7 +5,6 @@ import { compressImageToWebp, uploadReceiptImage, extractReceiptData, getImageBa
 class ControllerReceipt {
   static async setReceipt(req: any, res: Response) {
     const request = req.body?.data ?? req.body;
-    console.log(JSON.stringify(request, null, 2))
 
     if (!request) {
       return res.status(400).json({

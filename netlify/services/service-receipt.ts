@@ -1,13 +1,65 @@
 import sharp from 'sharp';
-import supabase from '../supabase/supabase';
+import getSupabaseClient from '../supabase/supabase';
 
 type ReceiptPayload = {
   imageBase64?: string;
-  merchantName?: string;
-  totalAmount?: number | string;
-  currency?: string;
-  notes?: string;
   source?: string;
+};
+
+type ExtractedReceiptData = {
+  merchantName: string;
+  totalAmount: number | string;
+  currency: string;
+  notes: string;
+  summary: string;
+};
+
+/**
+ * Telegram doesn't send image bytes in the webhook payload — only a file_id.
+ * This pulls the file_id out of a Telegram update (document or photo),
+ * resolves it via getFile, downloads the bytes, and returns a base64 data URL.
+ * Returns null if the payload isn't a Telegram update / has no file.
+ */
+export const getImageBase64FromTelegramUpdate = async (body: any): Promise<string | null> => {
+  const fileId: string | undefined =
+    body?.message?.document?.file_id ||
+    (Array.isArray(body?.message?.photo) ? body.message.photo[body.message.photo.length - 1]?.file_id : undefined);
+
+  if (!fileId) {
+    return null;
+  }
+
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  if (!TELEGRAM_BOT_TOKEN) {
+    throw new Error('Missing TELEGRAM_BOT_TOKEN environment variable.');
+  }
+
+  const getFileRes = await fetch(
+    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fileId)}`
+  );
+
+  if (!getFileRes.ok) {
+    throw new Error(`Telegram getFile failed with status ${getFileRes.status}`);
+  }
+
+  const fileData = await getFileRes.json() as { ok: boolean; result?: { file_path?: string } };
+
+  if (!fileData.ok || !fileData.result?.file_path) {
+    throw new Error('Telegram getFile did not return a file_path.');
+  }
+
+  const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${fileData.result.file_path}`;
+  const fileRes = await fetch(fileUrl);
+
+  if (!fileRes.ok) {
+    throw new Error(`Failed to download Telegram file, status ${fileRes.status}`);
+  }
+
+  const arrayBuffer = await fileRes.arrayBuffer();
+  const base64 = Buffer.from(arrayBuffer).toString('base64');
+  const mimeType = body?.message?.document?.mime_type || 'image/png';
+
+  return `data:${mimeType};base64,${base64}`;
 };
 
 export const compressImageToWebp = async (imageBase64: string) => {
@@ -28,8 +80,12 @@ export const compressImageToWebp = async (imageBase64: string) => {
 };
 
 export const uploadReceiptImage = async (buffer: Buffer, fileName: string) => {
-  const bucket = process.env.SUPABASE_BUCKET || '';
+  const bucket = process.env.SUPABASE_BUCKET;
+  if (!bucket) {
+    throw new Error('Missing SUPABASE_BUCKET environment variable. Add it to your .env file.');
+  }
 
+  const supabase = getSupabaseClient();
   const { error } = await supabase.storage.from(bucket).upload(fileName, buffer, {
     contentType: 'image/webp',
     upsert: true
@@ -121,7 +177,9 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
   });
 
   if (!response.ok) {
-    return 'AI summary unavailable: the AI service returned an error.';
+    const errorBody = await response.text().catch(() => '');
+    console.error(`extractReceiptData: AI service returned ${response.status}`, errorBody);
+    return fallbackReceiptData('AI summary unavailable: the AI service returned an error.');
   }
 
   const data = await response.json() as {

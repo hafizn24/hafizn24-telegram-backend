@@ -2,9 +2,10 @@ import express, { Request, Response } from 'express';
 import serverless from 'serverless-http';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import routeReceipt from '../routes/route-receipt';
 
 dotenv.config();
+
+const routeReceipt = require('../routes/route-receipt').default;
 
 const app = express();
 
@@ -16,6 +17,6 @@ app.get('/api/healthcheck', (_req: Request, res: Response) => {
   res.json({ message: 'Serverless server is running! 🚀' });
 });
 
-app.use('/api/test', routeReceipt);
+app.use('/api/receipt', routeReceipt);
 
 export const handler = serverless(app);

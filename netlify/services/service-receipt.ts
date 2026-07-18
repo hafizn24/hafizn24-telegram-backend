@@ -47,11 +47,41 @@ export const uploadReceiptImage = async (buffer: Buffer, fileName: string) => {
   };
 };
 
+const extractMessageText = (message: { content?: string; reasoning_content?: string }): string => {
+  return message.content || message.reasoning_content || '';
+};
+
+const fallbackReceiptData = (error: string) => ({
+  success: false,
+  error,
+  data: null
+});
+
+const parseExtractedReceiptData = (content: string) => {
+  if (!content || content.includes('AI summary unavailable')) {
+    return fallbackReceiptData('AI summary unavailable: empty AI response');
+  }
+
+  return {
+    success: true,
+    error: null,
+    data: {
+      ai_summary: content.trim()
+    }
+  };
+};
+
 export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?: string | null) => {
   const apiKey = process.env.ZAI_API_KEY;
+  const apiUrl = process.env.ZAI_API_URL;
+  const model = process.env.ZAI_MODEL;
 
-  if (!apiKey) {
-    return 'AI summary unavailable: ZAI_API_KEY is not configured.';
+  if (!apiKey || !apiUrl || !model) {
+    return 'AI summary unavailable: required environment variables are not configured.';
+  }
+
+  if (!imageUrl) {
+    return fallbackReceiptData('AI summary unavailable: no image URL was provided to the AI service.');
   }
 
   const prompt = [
@@ -63,14 +93,17 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
     `Image URL: ${imageUrl || 'Not uploaded'}`
   ].join('\\n');
 
-  const response = await fetch(process.env.ZAI_API_URL || '', {
+  const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: process.env.ZAI_MODEL || '',
+      model,
+      temperature: 0.2,
+      max_tokens: 1024,
+      thinking: { type: 'disabled' },
       messages: [
         {
           role: 'system',
@@ -78,10 +111,12 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
         },
         {
           role: 'user',
-          content: prompt
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageUrl } }
+          ]
         }
-      ],
-      temperature: 0.2
+      ]
     })
   });
 
@@ -90,10 +125,22 @@ export const generateReceiptSummary = async (payload: ReceiptPayload, imageUrl?:
   }
 
   const data = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string; reasoning_content?: string } } & { finish_reason?: string }>;
   };
 
-  const content = data.choices?.[0]?.message?.content?.trim();
+  let content = extractMessageText(data.choices?.[0]?.message || {});
 
-  return content || 'AI summary unavailable.';
+  if (!content.trim()) {
+    content = extractMessageText(data.choices?.[0]?.message || {});
+  }
+
+  if (!content) {
+  console.error('AI response failed:', {
+    finish_reason: (data as any).finish_reason || (data.choices?.[0] as any)?.finish_reason,
+    raw_data: data
+  });
+    return 'AI summary unavailable: empty AI response.';
+  }
+
+  return parseExtractedReceiptData(content).data?.ai_summary || 'AI summary unavailable.';
 };

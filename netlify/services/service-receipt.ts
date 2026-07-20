@@ -62,6 +62,20 @@ export const getImageBase64FromTelegramUpdate = async (body: any): Promise<strin
   return `data:${mimeType};base64,${base64}`;
 };
 
+/**
+ * Checks if the Telegram update contains a PDF file
+ */
+export const isPdfDocument = (body: any): boolean => {
+  return body?.message?.document?.mime_type === 'application/pdf';
+};
+
+/**
+ * Extracts PDF file ID from Telegram update
+ */
+export const getPdfFileId = (body: any): string | undefined => {
+  return body?.message?.document?.file_id;
+};
+
 export const compressImageToWebp = async (imageBase64: string) => {
   const base64Data = imageBase64.includes('base64,') ? imageBase64.split('base64,')[1] : imageBase64;
   const inputBuffer = Buffer.from(base64Data, 'base64');
@@ -227,7 +241,7 @@ const fallbackReceiptData = (summary: string): ExtractedReceiptData => ({
   summary
 });
 
-export const extractReceiptData = async (imageUrl?: string | null) => {
+export const extractReceiptData = async (contentUrl?: string | null, contentType: 'image' | 'pdf' = 'image') => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const apiUrl = process.env.OPENROUTER_API_URL;
   const model = process.env.OPENROUTER_MODEL;
@@ -244,22 +258,49 @@ export const extractReceiptData = async (imageUrl?: string | null) => {
     return fallbackReceiptData('AI summary unavailable: AI model is not configured.');
   }
 
-  if (!imageUrl) {
-    return fallbackReceiptData('AI summary unavailable: no image URL was provided to the AI service.');
+  if (!contentUrl) {
+    return fallbackReceiptData('AI summary unavailable: no content URL was provided to the AI service.');
   }
 
-  const prompt = [
-    'You are a finance assistant analyzing a receipt image.',
-    'Extract the receipt information from the image and return valid JSON only.',
-    'Required keys: merchantName, totalAmount, currency, notes, summary.',
-    'Use null for text values that are not visible and 0 for monetary values that are not visible.',
-    'Do not wrap the response in markdown fences or extra commentary.',
-    'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
-  ].join('\n');
+  let prompt: string;
+  let userContent: any;
 
-  // IMPORTANT: the image must be sent as a multimodal content block (type: "image_url").
-  // Using a remote image URL matches OpenRouter's expected format and avoids unnecessary
-  // base64 payload encoding.
+  if (contentType === 'pdf') {
+    // For PDF content, send the markdown text directly
+    prompt = [
+      'You are a finance assistant analyzing a receipt document (PDF converted to text).',
+      'Extract the receipt information from the text content and return valid JSON only.',
+      'Required keys: merchantName, totalAmount, currency, notes, summary.',
+      'Use null for text values that are not visible and 0 for monetary values that are not visible.',
+      'Do not wrap the response in markdown fences or extra commentary.',
+      'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+    ].join('\n');
+
+    // Fetch the markdown content
+    const markdownResponse = await fetch(contentUrl!);
+    const markdownText = await markdownResponse.text();
+    
+    userContent = [
+      { type: 'text', text: prompt },
+      { type: 'text', text: `\n\nReceipt Content:\n${markdownText}` }
+    ];
+  } else {
+    // For image content, use the existing multimodal approach
+    prompt = [
+      'You are a finance assistant analyzing a receipt image.',
+      'Extract the receipt information from the image and return valid JSON only.',
+      'Required keys: merchantName, totalAmount, currency, notes, summary.',
+      'Use null for text values that are not visible and 0 for monetary values that are not visible.',
+      'Do not wrap the response in markdown fences or extra commentary.',
+      'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+    ].join('\n');
+
+    userContent = [
+      { type: 'text', text: prompt },
+      { type: 'image_url', image_url: { url: contentUrl! } }
+    ];
+  }
+
   let response: Response;
   try {
     response = await fetch(apiUrl, {
@@ -273,14 +314,13 @@ export const extractReceiptData = async (imageUrl?: string | null) => {
         messages: [
           {
             role: 'system',
-            content: 'You extract receipt metadata from images and return structured JSON.'
+            content: contentType === 'pdf' 
+              ? 'You extract receipt metadata from text documents and return structured JSON.'
+              : 'You extract receipt metadata from images and return structured JSON.'
           },
           {
             role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } }
-            ]
+            content: userContent
           }
         ],
         temperature: 0.2,
@@ -307,16 +347,16 @@ export const extractReceiptData = async (imageUrl?: string | null) => {
   };
 
   const messageContent = data.choices?.[0]?.message?.content;
-  let content = extractMessageText(messageContent).trim();
+  let extractedContent = extractMessageText(messageContent).trim();
 
   // Fallback: some GLM responses still put text in reasoning_content even with
   // thinking disabled, or truncate content if max_tokens is hit mid-thought.
-  if (!content) {
+  if (!extractedContent) {
     const reasoningContent = data.choices?.[0]?.message?.reasoning_content;
-    content = extractMessageText(reasoningContent).trim();
+    extractedContent = extractMessageText(reasoningContent).trim();
   }
 
-  if (!content) {
+  if (!extractedContent) {
     console.error(
       'extractReceiptData: empty AI response',
       JSON.stringify({ finishReason: data.choices?.[0]?.finish_reason, data })
@@ -324,5 +364,5 @@ export const extractReceiptData = async (imageUrl?: string | null) => {
     return fallbackReceiptData('AI summary unavailable: empty AI response.');
   }
 
-  return parseExtractedReceiptData(content);
+  return parseExtractedReceiptData(extractedContent);
 };

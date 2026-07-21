@@ -9,7 +9,7 @@ import getSupabaseClient from '../supabase/supabase';
 export const downloadPdfFromTelegram = async (fileId: string): Promise<string> => {
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN) {
-    throw new Error('Missing TELEGRAM_BOT_TOKEN environment variable.');
+    throw Error('Missing TELEGRAM_BOT_TOKEN environment variable.');
   }
 
   // Get file path from Telegram
@@ -18,13 +18,13 @@ export const downloadPdfFromTelegram = async (fileId: string): Promise<string> =
   );
 
   if (!getFileRes.ok) {
-    throw new Error(`Telegram getFile failed with status ${getFileRes.status}`);
+    throw Error(`Telegram getFile failed with status ${getFileRes.status}`);
   }
 
   const fileData = await getFileRes.json() as { ok: boolean; result?: { file_path?: string } };
 
   if (!fileData.ok || !fileData.result?.file_path) {
-    throw new Error('Telegram getFile did not return a file_path.');
+    throw Error('Telegram getFile did not return a file_path.');
   }
 
   // Download the file
@@ -32,11 +32,14 @@ export const downloadPdfFromTelegram = async (fileId: string): Promise<string> =
   const fileRes = await fetch(fileUrl);
 
   if (!fileRes.ok) {
-    throw new Error(`Failed to download Telegram file, status ${fileRes.status}`);
+    throw Error(`Failed to download Telegram file, status ${fileRes.status}`);
   }
 
-  // Save file locally
-  const tempDir = path.join(process.cwd(), 'temp');
+  // Save file locally. Netlify Functions (AWS Lambda) only allow writes to
+  // /tmp — process.cwd() is read-only in production and will throw
+  // EROFS there even though it works fine locally.
+  const os = await import('os');
+  const tempDir = path.join(os.tmpdir(), 'receipt-temp');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
@@ -68,7 +71,7 @@ export const convertPdfToMarkdown = async (pdfPath: string): Promise<string> => 
 
     return markdownContent.trim();
   } catch (error) {
-    throw new Error(`Failed to convert PDF to Markdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw Error(`Failed to convert PDF to Markdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
@@ -78,7 +81,7 @@ export const convertPdfToMarkdown = async (pdfPath: string): Promise<string> => 
 export const uploadMarkdownToStorage = async (markdownContent: string): Promise<string> => {
   const bucket = process.env.SUPABASE_BUCKET;
   if (!bucket) {
-    throw new Error('Missing SUPABASE_BUCKET environment variable.');
+    throw Error('Missing SUPABASE_BUCKET environment variable.');
   }
 
   const fileName = `receipt-md-${Date.now()}-${Math.random().toString(36).slice(2)}.md`;

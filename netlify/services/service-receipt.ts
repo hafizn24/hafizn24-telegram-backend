@@ -20,7 +20,9 @@ type ExtractedReceiptData = {
  * resolves it via getFile, downloads the bytes, and returns a base64 data URL.
  * Returns null if the payload isn't a Telegram update / has no file.
  */
-export const getImageBase64FromTelegramUpdate = async (body: any): Promise<string | null> => {
+export const getImageBase64FromTelegramUpdate = async (
+  body: any
+): Promise<{ base64: string; fileId: string } | null> => {
   const fileId: string | undefined =
     body?.message?.document?.file_id ||
     (Array.isArray(body?.message?.photo) ? body.message.photo[body.message.photo.length - 1]?.file_id : undefined);
@@ -31,7 +33,7 @@ export const getImageBase64FromTelegramUpdate = async (body: any): Promise<strin
 
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN) {
-    throw new Error('Missing TELEGRAM_BOT_TOKEN environment variable.');
+    throw Error('Missing TELEGRAM_BOT_TOKEN environment variable.');
   }
 
   const getFileRes = await fetch(
@@ -39,27 +41,27 @@ export const getImageBase64FromTelegramUpdate = async (body: any): Promise<strin
   );
 
   if (!getFileRes.ok) {
-    throw new Error(`Telegram getFile failed with status ${getFileRes.status}`);
+    throw Error(`Telegram getFile failed with status ${getFileRes.status}`);
   }
 
   const fileData = await getFileRes.json() as { ok: boolean; result?: { file_path?: string } };
 
   if (!fileData.ok || !fileData.result?.file_path) {
-    throw new Error('Telegram getFile did not return a file_path.');
+    throw Error('Telegram getFile did not return a file_path.');
   }
 
   const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${fileData.result.file_path}`;
   const fileRes = await fetch(fileUrl);
 
   if (!fileRes.ok) {
-    throw new Error(`Failed to download Telegram file, status ${fileRes.status}`);
+    throw Error(`Failed to download Telegram file, status ${fileRes.status}`);
   }
 
   const arrayBuffer = await fileRes.arrayBuffer();
   const base64 = Buffer.from(arrayBuffer).toString('base64');
   const mimeType = body?.message?.document?.mime_type || 'image/png';
 
-  return `data:${mimeType};base64,${base64}`;
+  return { base64: `data:${mimeType};base64,${base64}`, fileId };
 };
 
 /**
@@ -76,7 +78,7 @@ export const getPdfFileId = (body: any): string | undefined => {
   return body?.message?.document?.file_id;
 };
 
-export const compressImageToWebp = async (imageBase64: string) => {
+export const compressImageToWebp = async (imageBase64: string, deterministicId?: string) => {
   const base64Data = imageBase64.includes('base64,') ? imageBase64.split('base64,')[1] : imageBase64;
   const inputBuffer = Buffer.from(base64Data, 'base64');
 
@@ -85,7 +87,14 @@ export const compressImageToWebp = async (imageBase64: string) => {
     .webp({ quality: 80 })
     .toBuffer();
 
-  const fileName = `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  // If we were given a Telegram file_id, use it to build the filename so
+  // reprocessing the exact same Telegram photo (e.g. a retried webhook)
+  // overwrites the same object in the bucket instead of creating a new
+  // duplicate file every time. Falls back to the old random name when no
+  // id is available (e.g. uploads coming from the web app).
+  const fileName = deterministicId
+    ? `receipt-${deterministicId}.webp`
+    : `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
 
   return {
     buffer: webpBuffer,
@@ -96,7 +105,7 @@ export const compressImageToWebp = async (imageBase64: string) => {
 export const uploadReceiptImage = async (buffer: Buffer, fileName: string) => {
   const bucket = process.env.SUPABASE_BUCKET;
   if (!bucket) {
-    throw new Error('Missing SUPABASE_BUCKET environment variable. Add it to your .env file.');
+    throw Error('Missing SUPABASE_BUCKET environment variable. Add it to your .env file.');
   }
 
   const supabase = getSupabaseClient();

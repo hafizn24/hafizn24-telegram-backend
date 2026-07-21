@@ -12,6 +12,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "pdf-parse": "^1.1.1",
+    "pdf2pic": "^3.0.6",
     "serverless-http": "^4.0.0",
     "sharp": "^0.35.3"
   },
@@ -19,6 +21,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
+    "@types/pdf-parse": "^1.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

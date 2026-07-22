@@ -3,15 +3,11 @@ import getSupabaseClient from '../supabase/supabase';
 
 type ReceiptPayload = {
   imageBase64?: string;
-  source?: string;
 };
 
 type ExtractedReceiptData = {
   merchantName: string;
   totalAmount: number | string;
-  currency: string;
-  notes: string;
-  summary: string;
 };
 
 /**
@@ -156,7 +152,7 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
   try {
     const parsed = JSON.parse(cleanedContent) as Record<string, unknown>;
 
-    return {
+return {
       merchantName: typeof parsed.merchantName === 'string'
         ? parsed.merchantName
         : typeof parsed.merchant === 'string'
@@ -170,62 +166,28 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
           ? parsed.total
           : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
             ? parsed.amount
-            : 0,
-      currency: typeof parsed.currency === 'string'
-        ? parsed.currency
-        : typeof parsed.currencyCode === 'string'
-          ? parsed.currencyCode
-          : 'MYR',
-      notes: typeof parsed.notes === 'string'
-        ? parsed.notes
-        : typeof parsed.note === 'string'
-          ? parsed.note
-          : '',
-      summary: typeof parsed.summary === 'string'
-        ? parsed.summary
-        : typeof parsed.aiSummary === 'string'
-          ? parsed.aiSummary
-          : typeof parsed.description === 'string'
-            ? parsed.description
-            : 'AI summary unavailable.'
+            : 0
     };
   } catch (error) {
     const fallbackJson = cleanedContent.match(/\{[\s\S]*\}/);
     if (fallbackJson) {
       try {
         const parsed = JSON.parse(fallbackJson[0]) as Record<string, unknown>;
-        return {
-          merchantName: typeof parsed.merchantName === 'string'
-            ? parsed.merchantName
-            : typeof parsed.merchant === 'string'
-              ? parsed.merchant
-              : typeof parsed.vendor === 'string'
-                ? parsed.vendor
-                : 'Unknown',
-          totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
-            ? parsed.totalAmount
-            : typeof parsed.total === 'number' || typeof parsed.total === 'string'
-              ? parsed.total
-              : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
-                ? parsed.amount
-                : 0,
-          currency: typeof parsed.currency === 'string'
-            ? parsed.currency
-            : typeof parsed.currencyCode === 'string'
-              ? parsed.currencyCode
-              : 'MYR',
-          notes: typeof parsed.notes === 'string'
-            ? parsed.notes
-            : typeof parsed.note === 'string'
-              ? parsed.note
-              : '',
-          summary: typeof parsed.summary === 'string'
-            ? parsed.summary
-            : typeof parsed.aiSummary === 'string'
-              ? parsed.aiSummary
-              : typeof parsed.description === 'string'
-                ? parsed.description
-                : trimmedContent || 'AI summary unavailable.'
+return {
+        merchantName: typeof parsed.merchantName === 'string'
+          ? parsed.merchantName
+          : typeof parsed.merchant === 'string'
+            ? parsed.merchant
+            : typeof parsed.vendor === 'string'
+              ? parsed.vendor
+              : 'Unknown',
+        totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
+          ? parsed.totalAmount
+          : typeof parsed.total === 'number' || typeof parsed.total === 'string'
+            ? parsed.total
+            : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
+              ? parsed.amount
+              : 0
         };
       } catch (fallbackError) {
         console.error('parseExtractedReceiptData: fallback JSON parse error', fallbackError, cleanedContent);
@@ -234,20 +196,14 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
 
     return {
       merchantName: 'Unknown',
-      totalAmount: 0,
-      currency: 'MYR',
-      notes: '',
-      summary: trimmedContent || 'AI summary unavailable.'
+      totalAmount: 0
     };
   }
 };
 
-const fallbackReceiptData = (summary: string): ExtractedReceiptData => ({
+const fallbackReceiptData = (): ExtractedReceiptData => ({
   merchantName: 'Unknown',
-  totalAmount: 0,
-  currency: 'MYR',
-  notes: '',
-  summary
+  totalAmount: 0
 });
 
 export const extractReceiptData = async (contentUrl?: string | null, contentType: 'image' | 'pdf' = 'image') => {
@@ -256,19 +212,19 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
   const model = process.env.OPENROUTER_MODEL;
 
   if (!apiKey) {
-    return fallbackReceiptData('AI summary unavailable: AI API key is not configured.');
+    return fallbackReceiptData();
   }
 
   if (!apiUrl) {
-    return fallbackReceiptData('AI summary unavailable: AI API URL is not configured.');
+    return fallbackReceiptData();
   }
 
   if (!model) {
-    return fallbackReceiptData('AI summary unavailable: AI model is not configured.');
+    return fallbackReceiptData();
   }
 
   if (!contentUrl) {
-    return fallbackReceiptData('AI summary unavailable: no content URL was provided to the AI service.');
+    return fallbackReceiptData();
   }
 
   let prompt: string;
@@ -279,10 +235,10 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
     prompt = [
       'You are a finance assistant analyzing a receipt document (PDF converted to text).',
       'Extract the receipt information from the text content and return valid JSON only.',
-      'Required keys: merchantName, totalAmount, currency, notes, summary.',
+      'Required keys: merchantName, totalAmount.',
       'Use null for text values that are not visible and 0 for monetary values that are not visible.',
       'Do not wrap the response in markdown fences or extra commentary.',
-      'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+      'Return exactly one JSON object with the keys merchantName and totalAmount.'
     ].join('\n');
 
     // Fetch the markdown content
@@ -298,10 +254,10 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
     prompt = [
       'You are a finance assistant analyzing a receipt image.',
       'Extract the receipt information from the image and return valid JSON only.',
-      'Required keys: merchantName, totalAmount, currency, notes, summary.',
+      'Required keys: merchantName, totalAmount.',
       'Use null for text values that are not visible and 0 for monetary values that are not visible.',
       'Do not wrap the response in markdown fences or extra commentary.',
-      'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+      'Return exactly one JSON object with the keys merchantName and totalAmount.'
     ].join('\n');
 
     userContent = [
@@ -339,13 +295,13 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
     });
   } catch (err) {
     console.error('extractReceiptData: network error calling AI service', err);
-    return fallbackReceiptData('AI summary unavailable: could not reach the AI service.');
+    return fallbackReceiptData();
   }
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     console.error(`extractReceiptData: AI service returned ${response.status}`, errorBody);
-    return fallbackReceiptData('AI summary unavailable: the AI service returned an error.');
+    return fallbackReceiptData();
   }
 
   const data = await response.json() as {
@@ -370,7 +326,7 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
       'extractReceiptData: empty AI response',
       JSON.stringify({ finishReason: data.choices?.[0]?.finish_reason, data })
     );
-    return fallbackReceiptData('AI summary unavailable: empty AI response.');
+    return fallbackReceiptData();
   }
 
   return parseExtractedReceiptData(extractedContent);

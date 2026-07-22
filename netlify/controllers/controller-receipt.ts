@@ -6,11 +6,11 @@ import { processPdfFromTelegram, cleanupTempFiles } from '../services/service-pd
 /**
  * Sends confirmation message to Telegram user
  */
-const sendTelegramConfirmation = async (telegramChatId: number, summary: string) => {
+const sendTelegramConfirmation = async (telegramChatId: number, extractedData: any) => {
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN) return;
 
-  const message = `✅ Receipt processed successfully!\n\n📊 **Summary:**\n${summary}`;
+  const message = `✅ Receipt processed successfully!\n\n🏪 **Merchant:** ${extractedData.merchantName}`;
 
   try {
     await fetch(
@@ -131,11 +131,7 @@ class ControllerReceipt {
         // CHANGED: force to a number so a numeric DB column never rejects
         // a string like "12.50" coming back from the AI.
         total_amount: Number(extractedData.totalAmount) || 0,
-        currency: extractedData.currency,
-        notes: extractedData.notes || null,
         image_url: contentUrl,
-        ai_summary: extractedData.summary,
-        source: contentType === 'pdf' ? 'pdf' : (request.source || 'web'),
         user_id: telegramChatId || null,
         created_at: new Date().toISOString()
       };
@@ -168,7 +164,7 @@ class ControllerReceipt {
       if (tempFilePath) cleanupTempFiles(tempFilePath);
 
       if (telegramChatId) {
-        await sendTelegramConfirmation(telegramChatId, extractedData.summary);
+        await sendTelegramConfirmation(telegramChatId, extractedData);
       }
 
       return res.status(200).json({

@@ -3,14 +3,11 @@ import getSupabaseClient from '../supabase/supabase';
 
 type ReceiptPayload = {
   imageBase64?: string;
-  source?: string;
 };
 
 type ExtractedReceiptData = {
   merchantName: string;
   totalAmount: number | string;
-  currency: string;
-  notes: string;
   summary: string;
 };
 
@@ -156,7 +153,7 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
   try {
     const parsed = JSON.parse(cleanedContent) as Record<string, unknown>;
 
-    return {
+return {
       merchantName: typeof parsed.merchantName === 'string'
         ? parsed.merchantName
         : typeof parsed.merchant === 'string'
@@ -171,16 +168,6 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
           : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
             ? parsed.amount
             : 0,
-      currency: typeof parsed.currency === 'string'
-        ? parsed.currency
-        : typeof parsed.currencyCode === 'string'
-          ? parsed.currencyCode
-          : 'MYR',
-      notes: typeof parsed.notes === 'string'
-        ? parsed.notes
-        : typeof parsed.note === 'string'
-          ? parsed.note
-          : '',
       summary: typeof parsed.summary === 'string'
         ? parsed.summary
         : typeof parsed.aiSummary === 'string'
@@ -194,38 +181,28 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
     if (fallbackJson) {
       try {
         const parsed = JSON.parse(fallbackJson[0]) as Record<string, unknown>;
-        return {
-          merchantName: typeof parsed.merchantName === 'string'
-            ? parsed.merchantName
-            : typeof parsed.merchant === 'string'
-              ? parsed.merchant
-              : typeof parsed.vendor === 'string'
-                ? parsed.vendor
-                : 'Unknown',
-          totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
-            ? parsed.totalAmount
-            : typeof parsed.total === 'number' || typeof parsed.total === 'string'
-              ? parsed.total
-              : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
-                ? parsed.amount
-                : 0,
-          currency: typeof parsed.currency === 'string'
-            ? parsed.currency
-            : typeof parsed.currencyCode === 'string'
-              ? parsed.currencyCode
-              : 'MYR',
-          notes: typeof parsed.notes === 'string'
-            ? parsed.notes
-            : typeof parsed.note === 'string'
-              ? parsed.note
-              : '',
-          summary: typeof parsed.summary === 'string'
-            ? parsed.summary
-            : typeof parsed.aiSummary === 'string'
-              ? parsed.aiSummary
-              : typeof parsed.description === 'string'
-                ? parsed.description
-                : trimmedContent || 'AI summary unavailable.'
+return {
+        merchantName: typeof parsed.merchantName === 'string'
+          ? parsed.merchantName
+          : typeof parsed.merchant === 'string'
+            ? parsed.merchant
+            : typeof parsed.vendor === 'string'
+              ? parsed.vendor
+              : 'Unknown',
+        totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
+          ? parsed.totalAmount
+          : typeof parsed.total === 'number' || typeof parsed.total === 'string'
+            ? parsed.total
+            : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
+              ? parsed.amount
+              : 0,
+        summary: typeof parsed.summary === 'string'
+          ? parsed.summary
+          : typeof parsed.aiSummary === 'string'
+            ? parsed.aiSummary
+          : typeof parsed.description === 'string'
+            ? parsed.description
+            : trimmedContent || 'AI summary unavailable.'
         };
       } catch (fallbackError) {
         console.error('parseExtractedReceiptData: fallback JSON parse error', fallbackError, cleanedContent);
@@ -235,8 +212,6 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
     return {
       merchantName: 'Unknown',
       totalAmount: 0,
-      currency: 'MYR',
-      notes: '',
       summary: trimmedContent || 'AI summary unavailable.'
     };
   }
@@ -245,8 +220,6 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
 const fallbackReceiptData = (summary: string): ExtractedReceiptData => ({
   merchantName: 'Unknown',
   totalAmount: 0,
-  currency: 'MYR',
-  notes: '',
   summary
 });
 
@@ -279,10 +252,10 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
     prompt = [
       'You are a finance assistant analyzing a receipt document (PDF converted to text).',
       'Extract the receipt information from the text content and return valid JSON only.',
-      'Required keys: merchantName, totalAmount, currency, notes, summary.',
+      'Required keys: merchantName, totalAmount, summary.',
       'Use null for text values that are not visible and 0 for monetary values that are not visible.',
       'Do not wrap the response in markdown fences or extra commentary.',
-      'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+      'Return exactly one JSON object with the keys merchantName, totalAmount, and summary.'
     ].join('\n');
 
     // Fetch the markdown content
@@ -298,10 +271,10 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
     prompt = [
       'You are a finance assistant analyzing a receipt image.',
       'Extract the receipt information from the image and return valid JSON only.',
-      'Required keys: merchantName, totalAmount, currency, notes, summary.',
+      'Required keys: merchantName, totalAmount, summary.',
       'Use null for text values that are not visible and 0 for monetary values that are not visible.',
       'Do not wrap the response in markdown fences or extra commentary.',
-      'Return exactly one JSON object with the keys merchantName, totalAmount, currency, notes, and summary.'
+      'Return exactly one JSON object with the keys merchantName, totalAmount, and summary.'
     ].join('\n');
 
     userContent = [

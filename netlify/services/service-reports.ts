@@ -10,6 +10,19 @@ interface ReceiptData {
 }
 
 /**
+ * Escape special characters for Telegram Markdown V1
+ * Characters that need escaping: _, *, ``, [, ]
+ */
+const escapeMarkdownV1 = (text: string): string => {
+  return text
+    .replace(/_/g, '\\_')
+    .replace(/\*/g, '\\*')
+    .replace(/`/g, '\\`')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]');
+};
+
+/**
  * Interface for report data
  */
 interface ReportData {
@@ -61,7 +74,8 @@ const generateWeeklyReport = async (userId: number): Promise<string> => {
   
   receipts.forEach((receipt, index) => {
     const date = new Date(receipt.created_at).toLocaleDateString();
-    message += `${index + 1}. 🏪 ${receipt.merchant_name} - 💰 ${receipt.total_amount.toFixed(2)} (${date})\n`;
+    const escapedMerchantName = escapeMarkdownV1(receipt.merchant_name);
+    message += `${index + 1}. 🏪 ${escapedMerchantName} - 💰 ${receipt.total_amount.toFixed(2)} (${date})\n`;
   });
   
   return message;
@@ -89,7 +103,8 @@ const generateMonthlyReport = async (userId: number): Promise<string> => {
   
   receipts.forEach((receipt, index) => {
     const date = new Date(receipt.created_at).toLocaleDateString();
-    message += `${index + 1}. 🏪 ${receipt.merchant_name} - 💰 ${receipt.total_amount.toFixed(2)} (${date})\n`;
+    const escapedMerchantName = escapeMarkdownV1(receipt.merchant_name);
+    message += `${index + 1}. 🏪 ${escapedMerchantName} - 💰 ${receipt.total_amount.toFixed(2)} (${date})\n`;
   });
   
   return message;
@@ -97,21 +112,24 @@ const generateMonthlyReport = async (userId: number): Promise<string> => {
 
 /**
  * Get all users with receipts in the database
+ * Using .distinct() on user_id can be unreliable due to database implementation nuances,
+ * so we fetch all user_id values and deduplicate in application code with a Set.
  */
 const getAllUsersWithReceipts = async (): Promise<number[]> => {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase
     .from('receipts')
-    .select('user_id')
-    .distinct();
+    .select('user_id');
   
   if (error) {
     console.error('Error fetching users:', error);
     throw new Error(`Failed to fetch users: ${error.message}`);
   }
   
-  return data?.map(user => user.user_id) || [];
+  // Use Set to ensure unique user IDs
+  const uniqueUserIds = new Set(data?.map(user => user.user_id) || []);
+  return Array.from(uniqueUserIds);
 };
 
 export {
@@ -119,6 +137,7 @@ export {
   generateWeeklyReport,
   generateMonthlyReport,
   getAllUsersWithReceipts,
+  escapeMarkdownV1,
   type ReceiptData,
   type ReportData
 };

@@ -7,7 +7,7 @@ class ControllerReports {
    */
   static async getWeeklyReport(req: Request, res: Response) {
     try {
-      const userId = parseInt(req.params.userId);
+      const userId = parseInt(Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId);
       
       if (!userId || isNaN(userId)) {
         return res.status(400).json({
@@ -36,7 +36,7 @@ class ControllerReports {
    */
   static async getMonthlyReport(req: Request, res: Response) {
     try {
-      const userId = parseInt(req.params.userId);
+      const userId = parseInt(Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId);
       
       if (!userId || isNaN(userId)) {
         return res.status(400).json({

@@ -1,3 +1,5 @@
+import { getAllUsersWithReceipts } from './service-reports';
+
 /**
  * Escape special characters for Telegram Markdown V1
  * Characters that need escaping: _, *, ``, [, ]
@@ -42,12 +44,10 @@ const sendTelegramReport = async (userId: number, report: string): Promise<void>
 
 /**
  * Run a report batch for weekly or monthly reports
- * Note: getAllUsersWithReceipts must be imported by the caller
  */
 const runReportBatch = async (
   type: 'weekly' | 'monthly',
-  generateReport: (userId: number) => Promise<string>,
-  getAllUsersWithReceipts: () => Promise<number[]>
+  generateReport: (userId: number) => Promise<string>
 ): Promise<{
   successCount: number;
   failureCount: number;

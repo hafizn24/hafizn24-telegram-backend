@@ -1,4 +1,5 @@
 import getSupabaseClient from '../supabase/supabase';
+import { escapeMarkdownV1 } from './service-telegram-report';
 
 /**
  * Interface for receipt data
@@ -8,19 +9,6 @@ interface ReceiptData {
   total_amount: number;
   created_at: string;
 }
-
-/**
- * Escape special characters for Telegram Markdown V1
- * Characters that need escaping: _, *, ``, [, ]
- */
-const escapeMarkdownV1 = (text: string): string => {
-  return text
-    .replace(/_/g, '\\_')
-    .replace(/\*/g, '\\*')
-    .replace(/`/g, '\\`')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]');
-};
 
 /**
  * Interface for report data
@@ -137,7 +125,6 @@ export {
   generateWeeklyReport,
   generateMonthlyReport,
   getAllUsersWithReceipts,
-  escapeMarkdownV1,
   type ReceiptData,
   type ReportData
 };

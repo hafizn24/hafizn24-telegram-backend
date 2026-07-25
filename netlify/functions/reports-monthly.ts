@@ -1,4 +1,4 @@
-import { generateMonthlyReport, getAllUsersWithReceipts } from '../services/service-reports';
+import { generateMonthlyReport } from '../services/service-reports';
 import { runReportBatch } from '../services/service-telegram-report';
 
 /**
@@ -7,7 +7,7 @@ import { runReportBatch } from '../services/service-telegram-report';
  */
 const sendMonthlyReports = async () => {
   try {
-    const result = await runReportBatch('monthly', generateMonthlyReport, getAllUsersWithReceipts);
+    const result = await runReportBatch('monthly', generateMonthlyReport);
     
     return {
       statusCode: 200,

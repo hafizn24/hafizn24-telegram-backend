@@ -1,4 +1,4 @@
-import { generateWeeklyReport, getAllUsersWithReceipts } from '../services/service-reports';
+import { generateWeeklyReport } from '../services/service-reports';
 import { runReportBatch } from '../services/service-telegram-report';
 
 /**
@@ -7,7 +7,7 @@ import { runReportBatch } from '../services/service-telegram-report';
  */
 const sendWeeklyReports = async () => {
   try {
-    const result = await runReportBatch('weekly', generateWeeklyReport, getAllUsersWithReceipts);
+    const result = await runReportBatch('weekly', generateWeeklyReport);
     
     return {
       statusCode: 200,

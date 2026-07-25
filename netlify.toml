@@ -5,3 +5,7 @@
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+
+[functions]
+  reports-weekly = { schedule = "0 9 * * 0" }
+  reports-monthly = { schedule = "0 9 1 * *" }

@@ -10,7 +10,7 @@ const sendTelegramConfirmation = async (telegramChatId: number, extractedData: a
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN) return;
 
-  const message = `✅ Receipt processed successfully!\n\n🏪 **Merchant:** ${extractedData.merchantName}`;
+  const message = `✅ Receipt processed successfully!\n\n🏪 **Merchant:** ${extractedData.merchantName}\n💰 **Amount:** ${extractedData.totalAmount}`;
 
   try {
     await fetch(

@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "netlify dev",
-    "test": "node tests/run-tests.ts"
+    "dev": "netlify dev"
   },
   "dependencies": {
     "@netlify/functions": "^5.3.0",

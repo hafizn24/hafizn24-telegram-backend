@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const routeReceipt = require('../routes/route-receipt').default;
+const routeReports = require('../routes/route-reports').default;
 
 const app = express();
 
@@ -18,5 +19,6 @@ app.get('/api/healthcheck', (_req: Request, res: Response) => {
 });
 
 app.use('/api/receipt', routeReceipt);
+app.use('/api/reports', routeReports);
 
 export const handler = serverless(app);

@@ -23,17 +23,29 @@ export const formatMonthlyReport = (report: string): string => {
 
 /**
  * Helper function to escape special characters for Telegram Markdown V2
- * This is more comprehensive than the V1 version used elsewhere
+ * Escapes all special characters according to Telegram's Markdown V2 spec
  */
 export const escapeMarkdownV2 = (text: string): string => {
   return text
-    .replace(/_/g, '\\_')
-    .replace(/\*/g, '\\*')
-    .replace(/\`/g, '\\`')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
+    .replace(/_/g, '\\_')  // Underscore
+    .replace(/\*/g, '\\*')  // Asterisk
+    .replace(/\`/g, '\\`')  // Backtick
+    .replace(/\[/g, '\\[')  // Opening bracket
+    .replace(/\]/g, '\\]')  // Closing bracket
+    .replace(/\(/g, '\\(')  // Opening parenthesis
+    .replace(/\)/g, '\\)')  // Closing parenthesis
+    .replace(/~/g, '\\~')   // Tilde
+    .replace(/`/g, '\\`')   // Backtick (duplicate for safety)
+    .replace(/>/g, '\\>')   // Greater than
+    .replace(/#/g, '\\#')   // Hash
+    .replace(/\+/g, '\\+')  // Plus
+    .replace(/-/g, '\\-')   // Minus
+    .replace(/=/g, '\\=')   // Equals
+    .replace(/\|/g, '\\|')  // Pipe
+    .replace(/\{/g, '\\{')  // Opening brace
+    .replace(/\}/g, '\\}')  // Closing brace
+    .replace(/\./g, '\\.')  // Period
+    .replace(/!/g, '\\!');  // Exclamation mark
 };
 
 /**

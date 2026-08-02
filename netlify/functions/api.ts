@@ -25,6 +25,16 @@ app.use('/api/reports', routeReports);
 // Handle bot webhook requests in serverless environment
 app.post('/telegram-webhook', async (req, res) => {
   try {
+    // Verify webhook secret token if configured
+    const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (secretToken) {
+      const providedToken = req.headers['x-telegram-bot-api-secret-token'];
+      if (providedToken !== secretToken) {
+        console.error('Invalid webhook secret token');
+        return res.status(403).json({ error: 'Invalid webhook secret' });
+      }
+    }
+    
     await bot.handleUpdate(req.body);
     res.json({ ok: true });
   } catch (error) {
@@ -34,12 +44,20 @@ app.post('/telegram-webhook', async (req, res) => {
 });
 
 // For development mode, launch the bot with long polling
-if (process.env.NODE_ENV !== 'production') {
+// Use a module-level flag to prevent multiple launches during hot reload
+if (process.env.NODE_ENV !== 'production' && !global.botLaunched) {
+  global.botLaunched = true;
   bot.launch();
   
   // Graceful shutdown
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  process.once('SIGINT', () => {
+    global.botLaunched = false;
+    bot.stop('SIGINT');
+  });
+  process.once('SIGTERM', () => {
+    global.botLaunched = false;
+    bot.stop('SIGTERM');
+  });
 }
 
 export const handler = serverless(app);

@@ -1,5 +1,4 @@
 import { Telegraf, Context } from 'telegraf';
-import ControllerReports from '../controllers/controller-reports';
 import { getWeeklyReportData, getMonthlyReportData } from '../controllers/controller-reports';
 import { 
   getUserIdByChatId, 

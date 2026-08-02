@@ -58,21 +58,49 @@ const linkChatToUser = async (chatId: string, userId: number): Promise<void> => 
 
 /**
  * Resolve token to get user ID (for deep linking)
- * This would typically involve looking up a temporary token in a tokens table
- * For now, we'll implement a simple version that could be extended
+ * This involves looking up a temporary token in a tokens table
+ * Tokens are one-time use and automatically expire after 24 hours
  */
 const resolveToken = async (token: string): Promise<number> => {
-  // This is a placeholder implementation
-  // In a real app, you would:
-  // 1. Look up the token in a tokens table
-  // 2. Check if it's expired
-  // 3. Return the associated user ID
-  // 4. Delete the token after use (one-time use)
+  const supabase = getSupabaseClient();
   
-  // For now, we'll simulate this with a simple mapping
-  // In production, implement proper token validation
+  // Look up the token in the tokens table
+  const { data, error } = await supabase
+    .from('telegram_tokens')
+    .select('user_id, created_at')
+    .eq('token', token)
+    .single();
   
-  throw new Error('Token resolution not implemented yet. Please implement token validation logic.');
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // No record found - invalid or already used token
+      throw new Error('Invalid or expired token. Please generate a new connection link.');
+    }
+    console.error('Error fetching token:', error);
+    throw new Error(`Failed to resolve token: ${error.message}`);
+  }
+  
+  // Check if token is expired (24 hours)
+  const tokenAge = Date.now() - new Date(data.created_at).getTime();
+  const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  
+  if (tokenAge > maxAge) {
+    // Delete expired token
+    await supabase
+      .from('telegram_tokens')
+      .delete()
+      .eq('token', token);
+    
+    throw new Error('Token expired. Please generate a new connection link.');
+  }
+  
+  // Delete the token after successful use (one-time use)
+  await supabase
+    .from('telegram_tokens')
+    .delete()
+    .eq('token', token);
+  
+  return data.user_id;
 };
 
 /**

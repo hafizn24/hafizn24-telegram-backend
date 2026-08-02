@@ -5,34 +5,24 @@ import { generateWeeklyReport, generateMonthlyReport } from '../services/service
  * Pure data function to get weekly report data (no HTTP handling)
  */
 export const getWeeklyReportData = async (userId: number): Promise<string> => {
-  try {
-    if (!userId || isNaN(userId)) {
-      throw new Error('Invalid user ID');
-    }
-    
-    const report = await generateWeeklyReport(userId);
-    return report;
-  } catch (error) {
-    console.error('Error generating weekly report data:', error);
-    throw error;
+  if (!userId || isNaN(userId)) {
+    throw new Error('Invalid user ID');
   }
+  
+  const report = await generateWeeklyReport(userId);
+  return report;
 };
 
 /**
  * Pure data function to get monthly report data (no HTTP handling)
  */
 export const getMonthlyReportData = async (userId: number): Promise<string> => {
-  try {
-    if (!userId || isNaN(userId)) {
-      throw new Error('Invalid user ID');
-    }
-    
-    const report = await generateMonthlyReport(userId);
-    return report;
-  } catch (error) {
-    console.error('Error generating monthly report data:', error);
-    throw error;
+  if (!userId || isNaN(userId)) {
+    throw new Error('Invalid user ID');
   }
+  
+  const report = await generateMonthlyReport(userId);
+  return report;
 };
 
 class ControllerReports {

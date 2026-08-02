@@ -17,9 +17,10 @@ TELEGRAM_WEBHOOK_URL=https://yourdomain.com/telegram-webhook
 ```
 
 ### 3. Database Setup
-Create the `telegram_links` table in Supabase:
+Create the `telegram_links` and `telegram_tokens` tables in Supabase:
 
 ```sql
+-- Main table for linking chat IDs to user accounts
 CREATE TABLE telegram_links (
   id SERIAL PRIMARY KEY,
   chat_id VARCHAR(255) UNIQUE NOT NULL,
@@ -27,9 +28,20 @@ CREATE TABLE telegram_links (
   linked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Add index for faster lookups
+-- Temporary tokens for deep linking (one-time use, 24h expiry)
+CREATE TABLE telegram_tokens (
+  id SERIAL PRIMARY KEY,
+  token VARCHAR(255) UNIQUE NOT NULL,
+  user_id INTEGER NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add indexes for faster lookups
 CREATE INDEX idx_telegram_links_chat_id ON telegram_links(chat_id);
 CREATE INDEX idx_telegram_links_user_id ON telegram_links(user_id);
+CREATE INDEX idx_telegram_tokens_token ON telegram_tokens(token);
+CREATE INDEX idx_telegram_tokens_user_id ON telegram_tokens(user_id);
+CREATE INDEX idx_telegram_tokens_created_at ON telegram_tokens(created_at);
 ```
 
 ### 4. Set Up Bot Commands

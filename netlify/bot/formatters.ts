@@ -8,8 +8,8 @@
  */
 export const formatWeeklyReport = (report: string): string => {
   // The report is already formatted as a Markdown string from service-reports.ts
-  // We just need to ensure it's properly escaped for Telegram
-  return report;
+  // We apply Markdown V2 escaping to prevent parsing errors with special characters
+  return escapeMarkdownV2(report);
 };
 
 /**
@@ -17,8 +17,8 @@ export const formatWeeklyReport = (report: string): string => {
  */
 export const formatMonthlyReport = (report: string): string => {
   // The report is already formatted as a Markdown string from service-reports.ts
-  // We just need to ensure it's properly escaped for Telegram
-  return report;
+  // We apply Markdown V2 escaping to prevent parsing errors with special characters
+  return escapeMarkdownV2(report);
 };
 
 /**

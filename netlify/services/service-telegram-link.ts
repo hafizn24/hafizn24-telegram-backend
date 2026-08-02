@@ -58,17 +58,18 @@ const linkChatToUser = async (chatId: string, userId: number): Promise<void> => 
 
 /**
  * Resolve token to get user ID (for deep linking)
- * This involves looking up a temporary token in a tokens table
+ * This involves looking up and deleting a temporary token in an atomic operation
  * Tokens are one-time use and automatically expire after 24 hours
  */
 const resolveToken = async (token: string): Promise<number> => {
   const supabase = getSupabaseClient();
   
-  // Look up the token in the tokens table
+  // Atomically fetch and delete the token to prevent race conditions
   const { data, error } = await supabase
     .from('telegram_tokens')
-    .select('user_id, created_at')
+    .delete()
     .eq('token', token)
+    .select('user_id, created_at')
     .single();
   
   if (error) {
@@ -76,7 +77,7 @@ const resolveToken = async (token: string): Promise<number> => {
       // No record found - invalid or already used token
       throw new Error('Invalid or expired token. Please generate a new connection link.');
     }
-    console.error('Error fetching token:', error);
+    console.error('Error resolving token:', error);
     throw new Error(`Failed to resolve token: ${error.message}`);
   }
   
@@ -85,20 +86,8 @@ const resolveToken = async (token: string): Promise<number> => {
   const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
   
   if (tokenAge > maxAge) {
-    // Delete expired token
-    await supabase
-      .from('telegram_tokens')
-      .delete()
-      .eq('token', token);
-    
     throw new Error('Token expired. Please generate a new connection link.');
   }
-  
-  // Delete the token after successful use (one-time use)
-  await supabase
-    .from('telegram_tokens')
-    .delete()
-    .eq('token', token);
   
   return data.user_id;
 };

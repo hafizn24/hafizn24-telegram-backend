@@ -15,8 +15,12 @@ const setupWebhook = async () => {
   try {
     console.log('Setting up Telegram webhook...');
     
-    // Set the webhook
-    const response = await bot.telegram.setWebhook(webhookUrl);
+    // Set the webhook with secret token if configured
+    const webhookOptions = {
+      secret_token: process.env.TELEGRAM_WEBHOOK_SECRET
+    };
+    
+    const response = await bot.telegram.setWebhook(webhookUrl, webhookOptions);
     
     if (response) {
       console.log('✅ Webhook set successfully:', webhookUrl);

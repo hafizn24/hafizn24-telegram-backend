@@ -1,9 +1,43 @@
 import { Request, Response } from 'express';
 import { generateWeeklyReport, generateMonthlyReport } from '../services/service-reports';
 
+/**
+ * Pure data function to get weekly report data (no HTTP handling)
+ */
+export const getWeeklyReportData = async (userId: number): Promise<string> => {
+  try {
+    if (!userId || isNaN(userId)) {
+      throw new Error('Invalid user ID');
+    }
+    
+    const report = await generateWeeklyReport(userId);
+    return report;
+  } catch (error) {
+    console.error('Error generating weekly report data:', error);
+    throw error;
+  }
+};
+
+/**
+ * Pure data function to get monthly report data (no HTTP handling)
+ */
+export const getMonthlyReportData = async (userId: number): Promise<string> => {
+  try {
+    if (!userId || isNaN(userId)) {
+      throw new Error('Invalid user ID');
+    }
+    
+    const report = await generateMonthlyReport(userId);
+    return report;
+  } catch (error) {
+    console.error('Error generating monthly report data:', error);
+    throw error;
+  }
+};
+
 class ControllerReports {
   /**
-   * Get weekly report for a user
+   * Get weekly report for a user (Express HTTP handler)
    */
   static async getWeeklyReport(req: Request, res: Response) {
     try {
@@ -16,7 +50,7 @@ class ControllerReports {
         });
       }
       
-      const report = await generateWeeklyReport(userId);
+      const report = await getWeeklyReportData(userId);
       
       return res.json({
         success: true,
@@ -32,7 +66,7 @@ class ControllerReports {
   }
 
   /**
-   * Get monthly report for a user
+   * Get monthly report for a user (Express HTTP handler)
    */
   static async getMonthlyReport(req: Request, res: Response) {
     try {
@@ -45,7 +79,7 @@ class ControllerReports {
         });
       }
       
-      const report = await generateMonthlyReport(userId);
+      const report = await getMonthlyReportData(userId);
       
       return res.json({
         success: true,

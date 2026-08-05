@@ -3,8 +3,7 @@ import { getWeeklyReportData, getMonthlyReportData } from '../controllers/contro
 import { 
   getUserIdByChatId, 
   linkChatToUser, 
-  resolveToken,
-  isChatLinked 
+  resolveToken
 } from '../services/service-telegram-link';
 import { 
   formatWeeklyReport, 
@@ -12,8 +11,37 @@ import {
   formatErrorMessage 
 } from './formatters';
 
+/**
+ * Helper function to send long messages in chunks
+ */
+async function sendChunked(ctx: Context, text: string, parseMode?: string): Promise<void> {
+  const maxLength = 4096;
+  let remainingText = text;
+  
+  while (remainingText.length > 0) {
+    let chunk = remainingText.substring(0, maxLength);
+    remainingText = remainingText.substring(maxLength);
+    
+    // Try to split at newline to avoid breaking MarkdownV2 formatting
+    if (remainingText.length > 0 && chunk.length === maxLength) {
+      const lastNewline = chunk.lastIndexOf('\n');
+      if (lastNewline > 0 && lastNewline < maxLength - 100) {
+        remainingText = chunk.substring(lastNewline + 1) + remainingText;
+        chunk = chunk.substring(0, lastNewline);
+      }
+    }
+    
+    await ctx.reply(chunk, { parse_mode: parseMode });
+  }
+}
+
+// Validate bot token
+if (!process.env.TELEGRAM_BOT_TOKEN) {
+  throw new Error('TELEGRAM_BOT_TOKEN environment variable is required');
+}
+
 // Create bot instance
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 /**
  * Helper function to resolve userId or prompt linking
@@ -93,7 +121,8 @@ bot.command('weekly', async (ctx) => {
 
   try {
     const report = await getWeeklyReportData(userId);
-    await ctx.reply(formatWeeklyReport(report), { parse_mode: 'Markdown' });
+    const formattedReport = formatWeeklyReport(report);
+    await sendChunked(ctx, formattedReport, 'MarkdownV2');
   } catch (error) {
     console.error('Error in /weekly command:', error);
     await ctx.reply(
@@ -111,7 +140,8 @@ bot.command('monthly', async (ctx) => {
 
   try {
     const report = await getMonthlyReportData(userId);
-    await ctx.reply(formatMonthlyReport(report), { parse_mode: 'Markdown' });
+    const formattedReport = formatMonthlyReport(report);
+    await sendChunked(ctx, formattedReport, 'MarkdownV2');
   } catch (error) {
     console.error('Error in /monthly command:', error);
     await ctx.reply(
@@ -124,14 +154,15 @@ bot.command('monthly', async (ctx) => {
  * /help command - Show available commands
  */
 bot.command('help', async (ctx) => {
-  await ctx.reply(
-    '🤖 *Receipt Bot Commands*\n\n' +
-    '• /start - Link your Telegram account\n' +
-    '• /weekly - Get your weekly spending report\n' +
-    '• /monthly - Get your monthly spending report\n' +
-    '• /help - Show this help message\n\n' +
-    'Make sure your account is linked first with /start!'
-  );
+    await ctx.reply(
+      '🤖 *Receipt Bot Commands*\n\n' +
+      '• /start - Link your Telegram account\n' +
+      '• /weekly - Get your weekly spending report\n' +
+      '• /monthly - Get your monthly spending report\n' +
+      '• /help - Show this help message\n\n' +
+      'Make sure your account is linked first with /start!',
+      { parse_mode: 'MarkdownV2' }
+    );
 });
 
 /**

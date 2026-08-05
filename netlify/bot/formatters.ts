@@ -27,6 +27,7 @@ export const formatMonthlyReport = (report: string): string => {
  */
 export const escapeMarkdownV2 = (text: string): string => {
   return text
+    .replace(/\\/g, '\\\\') // Backslash (must be first)
     .replace(/_/g, '\\_')  // Underscore
     .replace(/\*/g, '\\*')  // Asterisk
     .replace(/\`/g, '\\`')  // Backtick
@@ -35,8 +36,7 @@ export const escapeMarkdownV2 = (text: string): string => {
     .replace(/\(/g, '\\(')  // Opening parenthesis
     .replace(/\)/g, '\\)')  // Closing parenthesis
     .replace(/~/g, '\\~')   // Tilde
-    .replace(/`/g, '\\`')   // Backtick (duplicate for safety)
-    .replace(/>/g, '\\>')   // Greater than
+    .replace(>/g, '\\>')   // Greater than
     .replace(/#/g, '\\#')   // Hash
     .replace(/\+/g, '\\+')  // Plus
     .replace(/-/g, '\\-')   // Minus

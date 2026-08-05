@@ -27,24 +27,25 @@ app.get('/api/healthcheck', (_req: Request, res: Response) => {
 app.use('/api/receipt', routeReceipt);
 app.use('/api/reports', routeReports);
 
-// Check webhook secret in production
+// Check webhook secret
 const checkWebhookSecret = (req: Request, res: Response): boolean => {
   const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
   
-  if (process.env.NODE_ENV === 'production') {
-    if (!secretToken) {
-      console.error('❌ TELEGRAM_WEBHOOK_SECRET is required in production but not set');
-      res.status(500).json({ error: 'Server configuration error: webhook secret not configured' });
-      return false;
-    }
-    
+  if (secretToken) {
+    // Secret is configured, validate it regardless of NODE_ENV
     const providedToken = req.headers['x-telegram-bot-api-secret-token'];
     if (providedToken !== secretToken) {
       console.error('❌ Invalid webhook secret token');
       res.status(403).json({ error: 'Invalid webhook secret' });
       return false;
     }
+  } else if (process.env.NODE_ENV === 'production') {
+    // No secret configured in production - fail closed
+    console.error('❌ TELEGRAM_WEBHOOK_SECRET is required in production but not set');
+    res.status(500).json({ error: 'Server configuration error: webhook secret not configured' });
+    return false;
   }
+  // No secret configured and not in production - allow (local dev)
   
   return true;
 };

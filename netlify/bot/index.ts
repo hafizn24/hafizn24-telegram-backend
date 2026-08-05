@@ -8,7 +8,8 @@ import {
 import { 
   formatWeeklyReport, 
   formatMonthlyReport, 
-  formatErrorMessage 
+  formatErrorMessage,
+  escapeMarkdownV2
 } from './formatters';
 
 /**
@@ -154,15 +155,22 @@ bot.command('monthly', async (ctx) => {
  * /help command - Show available commands
  */
 bot.command('help', async (ctx) => {
-    await ctx.reply(
-      '🤖 *Receipt Bot Commands*\n\n' +
+    const headerText = 'Receipt Bot Commands';
+    const bodyText =
+      '🤖 *' + headerText + '*\n\n' +
       '• /start - Link your Telegram account\n' +
       '• /weekly - Get your weekly spending report\n' +
       '• /monthly - Get your monthly spending report\n' +
       '• /help - Show this help message\n\n' +
-      'Make sure your account is linked first with /start!',
-      { parse_mode: 'MarkdownV2' }
+      'Make sure your account is linked first with /start!';
+
+    // Escape everything except the intentional bold markers around the header
+    const escaped = escapeMarkdownV2(bodyText).replace(
+      escapeMarkdownV2('*' + headerText + '*'),
+      '*' + escapeMarkdownV2(headerText) + '*'
     );
+
+    await ctx.reply(escaped, { parse_mode: 'MarkdownV2' });
 });
 
 /**

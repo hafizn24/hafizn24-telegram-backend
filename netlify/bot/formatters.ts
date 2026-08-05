@@ -36,7 +36,7 @@ export const escapeMarkdownV2 = (text: string): string => {
     .replace(/\(/g, '\\(')  // Opening parenthesis
     .replace(/\)/g, '\\)')  // Closing parenthesis
     .replace(/~/g, '\\~')   // Tilde
-    .replace(>/g, '\\>')   // Greater than
+    .replace(/>/g, '\\>')   // Greater than
     .replace(/#/g, '\\#')   // Hash
     .replace(/\+/g, '\\+')  // Plus
     .replace(/-/g, '\\-')   // Minus

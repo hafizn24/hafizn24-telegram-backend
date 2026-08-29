@@ -1,32 +1,38 @@
 import sharp from 'sharp';
 import getSupabaseClient from '../supabase/supabase';
 
-type ReceiptPayload = {
-  imageBase64?: string;
-};
-
 type ExtractedReceiptData = {
   merchantName: string;
   totalAmount: number | string;
 };
 
 /**
- * Telegram doesn't send image bytes in the webhook payload — only a file_id.
- * This pulls the file_id out of a Telegram update (document or photo),
- * resolves it via getFile, downloads the bytes, and returns a base64 data URL.
- * Returns null if the payload isn't a Telegram update / has no file.
+ * Pulls the Telegram file_id + mime type out of a webhook update
+ * (document or photo). Returns null when the payload has no file.
+ * Photos have no mime_type, so they default to image/jpeg.
  */
-export const getImageBase64FromTelegramUpdate = async (
-  body: any
-): Promise<{ base64: string; fileId: string } | null> => {
-  const fileId: string | undefined =
-    body?.message?.document?.file_id ||
-    (Array.isArray(body?.message?.photo) ? body.message.photo[body.message.photo.length - 1]?.file_id : undefined);
-
-  if (!fileId) {
-    return null;
+export const getTelegramFileMeta = (body: any): { fileId: string; mimeType: string } | null => {
+  const document = body?.message?.document;
+  if (document?.file_id) {
+    return { fileId: document.file_id, mimeType: document.mime_type || 'application/octet-stream' };
   }
 
+  const photo = Array.isArray(body?.message?.photo) ? body.message.photo : null;
+  if (photo && photo.length) {
+    const last = photo[photo.length - 1];
+    if (last?.file_id) {
+      return { fileId: last.file_id, mimeType: 'image/jpeg' };
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Resolves a Telegram file_id via getFile and downloads the raw bytes.
+ * Shared by both the image and PDF paths.
+ */
+export const downloadTelegramFile = async (fileId: string): Promise<Buffer> => {
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN) {
     throw Error('Missing TELEGRAM_BOT_TOKEN environment variable.');
@@ -54,31 +60,18 @@ export const getImageBase64FromTelegramUpdate = async (
   }
 
   const arrayBuffer = await fileRes.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
-  const mimeType = body?.message?.document?.mime_type || 'image/png';
-
-  return { base64: `data:${mimeType};base64,${base64}`, fileId };
+  return Buffer.from(arrayBuffer);
 };
 
-/**
- * Checks if the Telegram update contains a PDF file
- */
-export const isPdfDocument = (body: any): boolean => {
-  return body?.message?.document?.mime_type === 'application/pdf';
-};
+// Telegram file_ids can contain characters that are illegal/invalid as object
+// keys (notably '/', '+', '='), which would otherwise create unintended path
+// segments or collisions in the storage bucket. Sanitize them to a safe,
+// still-deterministic form (same file_id -> same sanitized string).
+const sanitizeStorageId = (id: string): string =>
+  id.replace(/\//g, '_').replace(/\+/g, '-').replace(/=/g, '');
 
-/**
- * Extracts PDF file ID from Telegram update
- */
-export const getPdfFileId = (body: any): string | undefined => {
-  return body?.message?.document?.file_id;
-};
-
-export const compressImageToWebp = async (imageBase64: string, deterministicId?: string) => {
-  const base64Data = imageBase64.includes('base64,') ? imageBase64.split('base64,')[1] : imageBase64;
-  const inputBuffer = Buffer.from(base64Data, 'base64');
-
-  const webpBuffer = await sharp(inputBuffer)
+export const compressImageToWebp = async (imageBuffer: Buffer, deterministicId?: string) => {
+  const webpBuffer = await sharp(imageBuffer)
     .resize({ width: 1600, withoutEnlargement: true })
     .webp({ quality: 80 })
     .toBuffer();
@@ -89,7 +82,57 @@ export const compressImageToWebp = async (imageBase64: string, deterministicId?:
   // duplicate file every time. Falls back to the old random name when no
   // id is available (e.g. uploads coming from the web app).
   const fileName = deterministicId
-    ? `receipt-${deterministicId}.webp`
+    ? `receipt-${sanitizeStorageId(deterministicId)}.webp`
+    : `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+
+  return {
+    buffer: webpBuffer,
+    fileName
+  };
+};
+
+// We pin the official PDF.js build (legacy) via unpdf. It relies on
+// Promise.withResolvers / DOMMatrix at module load, which require Node >= 22
+// (see node_version = "22" in netlify.toml). This only needs to be done once
+// per process.
+let pdfjsReady = false;
+const ensurePdfJs = async () => {
+  if (pdfjsReady) return;
+  const { definePDFJSModule } = await import('unpdf');
+  await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'));
+  pdfjsReady = true;
+};
+
+/**
+ * Rasterizes the FIRST page of a PDF to a webp image.
+ * Uses pdfjs-dist (via unpdf) with @napi-rs/canvas as the rendering backend,
+ * which ships prebuilt binaries and needs no system poppler/ghostscript —
+ * so it works in serverless (Netlify Lambda). PDFs that can't be parsed
+ * (e.g. encrypted/password protected) will throw and surface as an error.
+ */
+export const convertPdfToWebp = async (pdfBuffer: Buffer, deterministicId?: string) => {
+  await ensurePdfJs();
+  const { renderPageAsImage } = await import('unpdf');
+
+  const image = await renderPageAsImage(new Uint8Array(pdfBuffer), 1, {
+    canvasImport: () => import('@napi-rs/canvas'),
+    scale: 2
+  });
+
+  // renderPageAsImage returns an ArrayBuffer (toDataURL is not set). Guard
+  // against the string (data URL) branch so we never silently feed garbage
+  // into sharp.
+  if (typeof image === 'string') {
+    throw Error('renderPageAsImage returned a data URL; expected an ArrayBuffer.');
+  }
+
+  const webpBuffer = await sharp(Buffer.from(image))
+    .resize({ width: 1600, withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toBuffer();
+
+  const fileName = deterministicId
+    ? `receipt-${sanitizeStorageId(deterministicId)}.webp`
     : `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
 
   return {
@@ -152,7 +195,7 @@ const parseExtractedReceiptData = (content: string): ExtractedReceiptData => {
   try {
     const parsed = JSON.parse(cleanedContent) as Record<string, unknown>;
 
-return {
+    return {
       merchantName: typeof parsed.merchantName === 'string'
         ? parsed.merchantName
         : typeof parsed.merchant === 'string'
@@ -173,21 +216,21 @@ return {
     if (fallbackJson) {
       try {
         const parsed = JSON.parse(fallbackJson[0]) as Record<string, unknown>;
-return {
-        merchantName: typeof parsed.merchantName === 'string'
-          ? parsed.merchantName
-          : typeof parsed.merchant === 'string'
-            ? parsed.merchant
-            : typeof parsed.vendor === 'string'
-              ? parsed.vendor
-              : 'Unknown',
-        totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
-          ? parsed.totalAmount
-          : typeof parsed.total === 'number' || typeof parsed.total === 'string'
-            ? parsed.total
-            : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
-              ? parsed.amount
-              : 0
+        return {
+          merchantName: typeof parsed.merchantName === 'string'
+            ? parsed.merchantName
+            : typeof parsed.merchant === 'string'
+              ? parsed.merchant
+              : typeof parsed.vendor === 'string'
+                ? parsed.vendor
+                : 'Unknown',
+          totalAmount: typeof parsed.totalAmount === 'number' || typeof parsed.totalAmount === 'string'
+            ? parsed.totalAmount
+            : typeof parsed.total === 'number' || typeof parsed.total === 'string'
+              ? parsed.total
+              : typeof parsed.amount === 'number' || typeof parsed.amount === 'string'
+                ? parsed.amount
+                : 0
         };
       } catch (fallbackError) {
         console.error('parseExtractedReceiptData: fallback JSON parse error', fallbackError, cleanedContent);
@@ -206,65 +249,33 @@ const fallbackReceiptData = (): ExtractedReceiptData => ({
   totalAmount: 0
 });
 
-export const extractReceiptData = async (contentUrl?: string | null, contentType: 'image' | 'pdf' = 'image') => {
+/**
+ * Extracts receipt metadata from an image URL using a multimodal AI model.
+ * Both image and PDF inputs are now stored as webp images, so the AI always
+ * receives an image_url (the old markdown/text branch has been removed).
+ */
+export const extractReceiptData = async (contentUrl?: string | null) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const apiUrl = process.env.OPENROUTER_API_URL;
   const model = process.env.OPENROUTER_MODEL;
 
-  if (!apiKey) {
+  if (!apiKey || !apiUrl || !model || !contentUrl) {
     return fallbackReceiptData();
   }
 
-  if (!apiUrl) {
-    return fallbackReceiptData();
-  }
+  const prompt = [
+    'You are a finance assistant analyzing a receipt image.',
+    'Extract the receipt information from the image and return valid JSON only.',
+    'Required keys: merchantName, totalAmount.',
+    'Use null for text values that are not visible and 0 for monetary values that are not visible.',
+    'Do not wrap the response in markdown fences or extra commentary.',
+    'Return exactly one JSON object with the keys merchantName and totalAmount.'
+  ].join('\n');
 
-  if (!model) {
-    return fallbackReceiptData();
-  }
-
-  if (!contentUrl) {
-    return fallbackReceiptData();
-  }
-
-  let prompt: string;
-  let userContent: any;
-
-  if (contentType === 'pdf') {
-    // For PDF content, send the markdown text directly
-    prompt = [
-      'You are a finance assistant analyzing a receipt document (PDF converted to text).',
-      'Extract the receipt information from the text content and return valid JSON only.',
-      'Required keys: merchantName, totalAmount.',
-      'Use null for text values that are not visible and 0 for monetary values that are not visible.',
-      'Do not wrap the response in markdown fences or extra commentary.',
-      'Return exactly one JSON object with the keys merchantName and totalAmount.'
-    ].join('\n');
-
-    // Fetch the markdown content
-    const markdownResponse = await fetch(contentUrl!);
-    const markdownText = await markdownResponse.text();
-    
-    userContent = [
-      { type: 'text', text: prompt },
-      { type: 'text', text: `\n\nReceipt Content:\n${markdownText}` }
-    ];
-  } else {
-    // For image content, use the existing multimodal approach
-    prompt = [
-      'You are a finance assistant analyzing a receipt image.',
-      'Extract the receipt information from the image and return valid JSON only.',
-      'Required keys: merchantName, totalAmount.',
-      'Use null for text values that are not visible and 0 for monetary values that are not visible.',
-      'Do not wrap the response in markdown fences or extra commentary.',
-      'Return exactly one JSON object with the keys merchantName and totalAmount.'
-    ].join('\n');
-
-    userContent = [
-      { type: 'text', text: prompt },
-      { type: 'image_url', image_url: { url: contentUrl! } }
-    ];
-  }
+  const userContent = [
+    { type: 'text', text: prompt },
+    { type: 'image_url', image_url: { url: contentUrl } }
+  ];
 
   let response: Response;
   try {
@@ -279,9 +290,7 @@ export const extractReceiptData = async (contentUrl?: string | null, contentType
         messages: [
           {
             role: 'system',
-            content: contentType === 'pdf' 
-              ? 'You extract receipt metadata from text documents and return structured JSON.'
-              : 'You extract receipt metadata from images and return structured JSON.'
+            content: 'You extract receipt metadata from images and return structured JSON.'
           },
           {
             role: 'user',

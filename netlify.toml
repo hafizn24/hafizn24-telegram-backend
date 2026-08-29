@@ -1,11 +1,18 @@
 [build]
   functions = "netlify/functions"
   publish = "public"
+  # pdfjs-dist@6 / the official PDF.js build we load via unpdf require Node >= 22
+  # (Promise.withResolvers / DOMMatrix at module load). Netlify's default
+  # function runtime is Node 18, which would crash on the first PDF receipt.
+  node_version = "22"
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
 [functions]
+  # @napi-rs/canvas ships a native .node binary that esbuild cannot bundle.
+  # Keep it external so Netlify ships it in node_modules and loads it at runtime.
+  external_node_modules = ["@napi-rs/canvas"]
   reports-weekly = { schedule = "0 9 * * 0" }
   reports-monthly = { schedule = "0 9 1 * *" }

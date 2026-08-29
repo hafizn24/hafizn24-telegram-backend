@@ -63,6 +63,13 @@ export const downloadTelegramFile = async (fileId: string): Promise<Buffer> => {
   return Buffer.from(arrayBuffer);
 };
 
+// Telegram file_ids can contain characters that are illegal/invalid as object
+// keys (notably '/', '+', '='), which would otherwise create unintended path
+// segments or collisions in the storage bucket. Sanitize them to a safe,
+// still-deterministic form (same file_id -> same sanitized string).
+const sanitizeStorageId = (id: string): string =>
+  id.replace(/\//g, '_').replace(/\+/g, '-').replace(/=/g, '');
+
 export const compressImageToWebp = async (imageBuffer: Buffer, deterministicId?: string) => {
   const webpBuffer = await sharp(imageBuffer)
     .resize({ width: 1600, withoutEnlargement: true })
@@ -75,7 +82,7 @@ export const compressImageToWebp = async (imageBuffer: Buffer, deterministicId?:
   // duplicate file every time. Falls back to the old random name when no
   // id is available (e.g. uploads coming from the web app).
   const fileName = deterministicId
-    ? `receipt-${deterministicId}.webp`
+    ? `receipt-${sanitizeStorageId(deterministicId)}.webp`
     : `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
 
   return {
@@ -84,9 +91,10 @@ export const compressImageToWebp = async (imageBuffer: Buffer, deterministicId?:
   };
 };
 
-// pdfjs-dist's default build relies on Promise.try (not available in the
-// Node runtime used here / on Netlify Lambda), so we must point it at the
-// legacy build. This only needs to be done once per process.
+// We pin the official PDF.js build (legacy) via unpdf. It relies on
+// Promise.withResolvers / DOMMatrix at module load, which require Node >= 22
+// (see node_version = "22" in netlify.toml). This only needs to be done once
+// per process.
 let pdfjsReady = false;
 const ensurePdfJs = async () => {
   if (pdfjsReady) return;
@@ -111,13 +119,20 @@ export const convertPdfToWebp = async (pdfBuffer: Buffer, deterministicId?: stri
     scale: 2
   });
 
+  // renderPageAsImage returns an ArrayBuffer (toDataURL is not set). Guard
+  // against the string (data URL) branch so we never silently feed garbage
+  // into sharp.
+  if (typeof image === 'string') {
+    throw Error('renderPageAsImage returned a data URL; expected an ArrayBuffer.');
+  }
+
   const webpBuffer = await sharp(Buffer.from(image))
     .resize({ width: 1600, withoutEnlargement: true })
     .webp({ quality: 80 })
     .toBuffer();
 
   const fileName = deterministicId
-    ? `receipt-${deterministicId}.webp`
+    ? `receipt-${sanitizeStorageId(deterministicId)}.webp`
     : `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
 
   return {

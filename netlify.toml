@@ -1,6 +1,10 @@
 [build]
   functions = "netlify/functions"
   publish = "public"
+  # pdfjs-dist@6 / the official PDF.js build we load via unpdf require Node >= 22
+  # (Promise.withResolvers / DOMMatrix at module load). Netlify's default
+  # function runtime is Node 18, which would crash on the first PDF receipt.
+  node_version = "22"
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"

@@ -85,6 +85,16 @@ class ControllerReceipt {
       // 1) Incoming Telegram file (document or photo)?
       const meta = getTelegramFileMeta(req.body);
       if (meta) {
+        const isPdf = meta.mimeType === 'application/pdf';
+        const isImage = meta.mimeType.startsWith('image/');
+        if (!isPdf && !isImage) {
+          // Telegram must always get 2xx, otherwise it retries forever.
+          return res.status(200).json({
+            success: false,
+            message: 'Unsupported file type. Please send an image or a PDF receipt.'
+          });
+        }
+
         const fileBuffer = await downloadTelegramFile(meta.fileId);
         // Both images and PDFs end up as webp. PDFs are rasterized to an
         // image (first page) so the AI reads them exactly like images —

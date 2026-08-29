@@ -33,8 +33,7 @@ netlify/
 │   ├── controller-receipt.ts      # Receipt processing controller
 │   └── controller-reports.ts      # Report generation controller
 ├── services/
-│   ├── service-receipt.ts        # Receipt processing service
-│   ├── service-pdf.ts            # PDF processing service
+│   ├── service-receipt.ts        # Receipt + PDF processing service (images & PDFs -> webp)
 │   └── service-reports.ts        # Report generation service
 ├── routes/
 │   ├── route-receipt.ts          # Receipt API routes

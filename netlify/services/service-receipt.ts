@@ -1,5 +1,10 @@
 import sharp from 'sharp';
+import { createRequire } from 'module';
 import getSupabaseClient from '../supabase/supabase';
+
+// Used to resolve the PDF.js worker file at runtime. The project compiles to
+// CommonJS, so import.meta is unavailable here.
+const requireNode = createRequire(__filename);
 
 type ExtractedReceiptData = {
   merchantName: string;
@@ -98,8 +103,16 @@ export const compressImageToWebp = async (imageBuffer: Buffer, deterministicId?:
 let pdfjsReady = false;
 const ensurePdfJs = async () => {
   if (pdfjsReady) return;
-  const { definePDFJSModule } = await import('unpdf');
-  await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'));
+  const { definePDFJSModule, setWorker } = await import('unpdf');
+  // pdfjs-dist must be external (see netlify.toml) so this file is actually
+  // present in the deployed bundle; otherwise PDF.js can't set up its
+  // in-thread ("fake") worker and receipt processing fails with
+  // "Setting up fake worker failed: Cannot find module .../pdf.worker.mjs".
+  const workerSrc = requireNode.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+  if (typeof setWorker === 'function') {
+    setWorker(workerSrc);
+  }
+  await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'), { workerSrc });
   pdfjsReady = true;
 };
 

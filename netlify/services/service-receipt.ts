@@ -267,12 +267,22 @@ const fallbackReceiptData = (): ExtractedReceiptData => ({
  * Both image and PDF inputs are now stored as webp images, so the AI always
  * receives an image_url (the old markdown/text branch has been removed).
  */
-export const extractReceiptData = async (contentUrl?: string | null) => {
+export const extractReceiptData = async (
+  contentUrl?: string | null,
+  imageBase64?: string | null
+) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const apiUrl = process.env.OPENROUTER_API_URL;
   const model = process.env.OPENROUTER_MODEL;
 
-  if (!apiKey || !apiUrl || !model || !contentUrl) {
+  // Prefer an inline base64 image so extraction never depends on the AI
+  // service being able to fetch a public Supabase URL (e.g. when the bucket
+  // is private). Fall back to the public URL when base64 isn't supplied.
+  const imageUrl = imageBase64
+    ? `data:image/webp;base64,${imageBase64}`
+    : contentUrl || undefined;
+
+  if (!apiKey || !apiUrl || !model || !imageUrl) {
     return fallbackReceiptData();
   }
 
@@ -287,7 +297,7 @@ export const extractReceiptData = async (contentUrl?: string | null) => {
 
   const userContent = [
     { type: 'text', text: prompt },
-    { type: 'image_url', image_url: { url: contentUrl } }
+    { type: 'image_url', image_url: { url: imageUrl } }
   ];
 
   let response: Response;

@@ -124,7 +124,9 @@ class ControllerReceipt {
       const uploadResult = await uploadReceiptImage(webp.buffer, fileName);
       const contentUrl = uploadResult.publicUrl;
 
-      const extractedData = await extractReceiptData(contentUrl);
+      // Pass the webp buffer as inline base64 so the model receives the exact
+      // image bytes regardless of Supabase bucket privacy / public-URL access.
+      const extractedData = await extractReceiptData(contentUrl, webp.buffer.toString('base64'));
 
       const payload = {
         merchant_name: extractedData.merchantName,

@@ -13,6 +13,6 @@
 [functions]
   # @napi-rs/canvas ships a native .node binary that esbuild cannot bundle.
   # Keep it external so Netlify ships it in node_modules and loads it at runtime.
-  external_node_modules = ["@napi-rs/canvas"]
+  external_node_modules = ["@napi-rs/canvas", "pdfjs-dist"]
   reports-weekly = { schedule = "0 9 * * 0" }
   reports-monthly = { schedule = "0 9 1 * *" }
